@@ -80,3 +80,129 @@ response = llm.invoke(input=PROMPT.format_prompt(
 
 # Printing the Response
 print(response)
+
+
+
+
+# ---------------------------------------------- Method 2 ----------------------------------------------
+"""## Rewrite-Retrieve-Read """
+"""
+Because the original query can not be always optimal to retrieve for the LLM, especially in the real world... 
+we first prompt an LLM to rewrite the queries, then conduct retrieval-augmented reading.
+"""
+
+# Creating a function for the search tool
+from langchain.tools import DuckDuckGoSearchRun
+
+search = DuckDuckGoSearchRun()
+
+def retriever(query):
+    return search.run(query)
+
+
+# Creating the Chat Prompt Tempalte
+from langchain_core.prompts import ChatPromptTemplate
+
+template = """Answer the users question if and only if its present in the following context:
+
+<context>
+{context}
+</context>
+
+Question: {question}
+"""
+
+prompt = ChatPromptTemplate.from_template(template)
+
+
+# Instatiating our model
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+llm = ChatGoogleGenerativeAI(model="gemini-pro")
+
+
+# Creating our chain
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+
+chain = (
+    {"context": retriever, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+
+# Testing the chain - Baseline Response
+simple_query = "what is langchain?"
+
+resopnse = chain.invoke(simple_query)
+
+print("Baseline Response: ",response)
+
+
+# Creating a Distracted Query
+distracted_query = "man that sam bankman fried trial was crazy! what is langchain?"
+
+resopnse = chain.invoke(distracted_query)
+
+print("Baseline Response for Distracted Query: ",response)
+
+
+# Reason for Bad Response - Distracted Query Results in Bad Retrieval
+retrieved_content = retriever(distracted_query)
+print("Retrieved Information from Distracted Query")
+print(retrieved_content)
+
+
+# Creating a prompt template to rewrite the prompt so that the search will give better results
+
+template = """Provide a better search query for \
+web search engine to answer the given question, end \
+the queries with ’**’. Question: \
+{x} Answer:"""
+
+rewrite_prompt = ChatPromptTemplate.from_template(template)
+# rewrite_prompt.messages[0].prompt.template
+
+
+# Instead of creating the above prompt, the langchainhub already contains a pre-created prompts
+# So to use below, instead of above, uncomment the below
+# Here the rewrite_prompt contains the same prompt as the one written above
+
+# from langchain import hub
+
+# rewrite_prompt = hub.pull("langchain-ai/rewrite")
+# print(rewrite_prompt)
+
+
+# Parser to remove the `**`
+
+def _parse(text):
+    return text.strip("**")
+
+
+# Creating the rewriter
+# The rewriter will take in the user question, put it in the rewrite_prompt to rewrite it
+# and then parses it to remove the **
+
+rewriter = rewrite_prompt | llm | StrOutputParser() | _parse
+
+
+# Putting them all together - Using LCEL (Langchain Expression Language)
+
+rewrite_retrieve_read_chain = (
+    {
+        "context": {"x": RunnablePassthrough()} | rewriter | retriever,
+        "question": RunnablePassthrough(),
+    }
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+# Testing the distracted prompt using Rewrite-Retrieve-Read method
+
+response = rewrite_retrieve_read_chain.invoke(distracted_query)
+
+print("Rewrite-Retrieve-Read Response for Distracted Query: ",response)
