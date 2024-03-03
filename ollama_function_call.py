@@ -1,7 +1,7 @@
 from openai import OpenAI
 from pydantic import BaseModel, Field
 from typing import List
-
+from rich import print
 import instructor
 
 
