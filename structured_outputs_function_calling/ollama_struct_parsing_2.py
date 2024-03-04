@@ -51,8 +51,10 @@ for _ in range(20):
                 },
             ],
             response_model=PersonAddress,
+            # will retry if it fails to produce the object
+            max_retries = 3
         )
 
-        print(resp.model_dump_json(indent=2))
+        print(resp.model_dump_json())
     except Exception as e:
         print("Error")
